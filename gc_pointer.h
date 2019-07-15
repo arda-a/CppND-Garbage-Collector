@@ -105,54 +105,103 @@ Pointer<T,size>::Pointer(T *t){
     if (first)
         atexit(shutdown);
     first = false;
+    
+    refContainer.push_back(PtrDetails<T>(t, this->arraySize));
+    typename std::list<PtrDetails<T>>::iterator p;
+    p = findPtrInfo(t);
+    p->refcount++;
 
-    // TODO: Implement Pointer constructor
-    // Lab: Smart Pointer Project Lab
-
+    this->addr = p->memPtr;
+    this->isArray = p->isArray;
+    
 }
 // Copy constructor.
 template< class T, int size>
 Pointer<T,size>::Pointer(const Pointer &ob){
+    refContainer.push_back(PtrDetails<T>(ob.addr, ob.arraySize));
 
-    // TODO: Implement Pointer constructor
-    // Lab: Smart Pointer Project Lab
-
+    typename std::list<PtrDetails<T>>::iterator p;
+    p = findPtrInfo(ob.addr);
+    p->refcount++;
+    
+    this->addr = ob.addr;
+    this->isArray = ob.isArray;
 }
 
 // Destructor for Pointer.
 template <class T, int size>
 Pointer<T, size>::~Pointer(){
-    
-    // TODO: Implement Pointer destructor
-    // Lab: New and Delete Project Lab
+    typename std::list<PtrDetails<T>>::iterator p;
+    p = findPtrInfo(addr);
+
+    if(p->refcount > 0)
+        p->refcount--;
+
+    collect();
 }
 
 // Collect garbage. Returns true if at least
 // one object was freed.
 template <class T, int size>
 bool Pointer<T, size>::collect(){
+    bool memfreed = false;
+    typename std::list<PtrDetails<T>>::iterator p;
+    do{
+        for(p = refContainer.begin(); p != refContainer.end(); p++){
+            //if in use; skip
+            if(p->refcount > 0)
+                continue;
+            
+            memfreed = true;
 
-    // TODO: Implement collect function
-    // LAB: New and Delete Project Lab
-    // Note: collect() will be called in the destructor
-    return false;
+            //remove unused entry
+            refContainer.remove(*p);
+
+            //Free memory unless the Pointer is null
+            if(p->memPtr){
+                if(p->isArray){
+                    delete[] p->memPtr;
+                }
+                else{
+                    delete p->memPtr;
+                }
+            }
+
+            //restart the search
+            break;
+        }
+    } while(p != refContainer.end());
+    return memfreed;   
 }
 
 // Overload assignment of pointer to Pointer.
 template <class T, int size>
 T *Pointer<T, size>::operator=(T *t){
+    typename std::list<PtrDetails<T> >::iterator p;
+    p = findPtrInfo(addr);
+    p->refcount--;
 
-    // TODO: Implement operator==
-    // LAB: Smart Pointer Project Lab
+    refContainer.push_back(PtrDetails<T>(t, p->arraySize));
+    p = findPtrInfo(t);
+    p->refcount++;
 
+    addr = t;
+    return t;
 }
 // Overload assignment of Pointer to Pointer.
 template <class T, int size>
 Pointer<T, size> &Pointer<T, size>::operator=(Pointer &rv){
 
-    // TODO: Implement operator==
-    // LAB: Smart Pointer Project Lab
+    typename std::list<PtrDetails<T> >::iterator p;
+    p = findPtrInfo(addr);
+    p->refcount--;
 
+    PtrDetails<T> &details = PtrDetails<T>(rv.addr, rv.arraySize);
+    details.refcount++;
+    refContainer.push_back(details);
+
+    addr = rv->addr;
+    return rv;
 }
 
 // A utility function that displays refContainer.
