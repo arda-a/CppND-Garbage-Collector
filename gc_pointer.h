@@ -2,6 +2,7 @@
 #include <list>
 #include <typeinfo>
 #include <cstdlib>
+#include <algorithm>
 #include "gc_details.h"
 #include "gc_iterator.h"
 /*
@@ -105,28 +106,23 @@ Pointer<T,size>::Pointer(T *t){
     if (first)
         atexit(shutdown);
     first = false;
-    
-    refContainer.push_back(PtrDetails<T>(t, this->arraySize));
-    typename std::list<PtrDetails<T>>::iterator p;
-    p = findPtrInfo(t);
-    p->refcount++;
 
-    this->addr = p->memPtr;
-    this->isArray = p->isArray;
+    this->isArray = size > 0;
+    this->arraySize = size;
+    this->addr = t;
     
+    auto ptr_info_it = findPtrInfo(t);
+    if(ptr_info_it != refContainer.end()){
+        ptr_info_it->refcount++;
+    }else{
+        PtrDetails<T> ptrDetails(t, size);
+        ptrDetails.refcount = 1;
+        refContainer.push_back(ptrDetails);
+    }
 }
 // Copy constructor.
 template< class T, int size>
-Pointer<T,size>::Pointer(const Pointer &ob){
-    refContainer.push_back(PtrDetails<T>(ob.addr, ob.arraySize));
-
-    typename std::list<PtrDetails<T>>::iterator p;
-    p = findPtrInfo(ob.addr);
-    p->refcount++;
-    
-    this->addr = ob.addr;
-    this->isArray = ob.isArray;
-}
+Pointer<T,size>::Pointer(const Pointer &ob) : Pointer(ob.addr) {}
 
 // Destructor for Pointer.
 template <class T, int size>
@@ -145,32 +141,21 @@ Pointer<T, size>::~Pointer(){
 template <class T, int size>
 bool Pointer<T, size>::collect(){
     bool memfreed = false;
-    typename std::list<PtrDetails<T>>::iterator p;
-    do{
-        for(p = refContainer.begin(); p != refContainer.end(); p++){
-            //if in use; skip
-            if(p->refcount > 0)
-                continue;
-            
-            memfreed = true;
-
-            //remove unused entry
-            refContainer.remove(*p);
-
-            //Free memory unless the Pointer is null
-            if(p->memPtr){
-                if(p->isArray){
-                    delete[] p->memPtr;
-                }
-                else{
-                    delete p->memPtr;
-                }
-            }
-
-            //restart the search
-            break;
+    
+    auto removeIf = [&memfreed](const PtrDetails<T> &ptrDetails){
+        if(ptrDetails.refcount == 0){
+            ptrDetails.isArray ? delete[] ptrDetails.memPtr : delete ptrDetails.memPtr;
+            return memfreed = true;
         }
-    } while(p != refContainer.end());
+        return false;
+    };
+
+    //move unwanted items to end
+    auto new_end = std::remove_if(refContainer.begin(), refContainer.end(), removeIf);
+
+    //erase items from the end of list
+    refContainer.erase(new_end, refContainer.end());
+
     return memfreed;   
 }
 
